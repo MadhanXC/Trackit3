@@ -95,6 +95,9 @@ export async function POST(req: NextRequest) {
 
     try {
       const fullEmailResponse = await resend.emails.get(emailId);
+      console.log("========== FULL EMAIL RESPONSE ==========");
+console.log(JSON.stringify(fullEmailResponse, null, 2));
+console.log("=========================================");
 
       if (!fullEmailResponse.error && fullEmailResponse.data) {
         const emailContent = fullEmailResponse.data;
