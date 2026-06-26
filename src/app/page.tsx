@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import * as React from "react"
 
 export default function Dashboard() {
@@ -43,7 +44,7 @@ export default function Dashboard() {
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   const [todoTitle, setTodoTitle] = React.useState("");
-  const [editingTodo, setEditingTodo] = React.useState<{id: string, title: string} | null>(null);
+  const [editingTodo, setEditingTodo] = React.useState<{id: string, title: string, description: string} | null>(null);
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -100,6 +101,7 @@ export default function Dashboard() {
     if (!todoTitle.trim() || !firestore || !user) return;
     addDocumentNonBlocking(collection(firestore, 'users', user.uid, 'todos'), {
       title: todoTitle.trim(),
+      description: '',
       completed: false,
       createdAt: new Date().toISOString()
     });
@@ -116,7 +118,8 @@ export default function Dashboard() {
   const handleUpdateTodo = () => {
     if (!editingTodo || !firestore || !user) return;
     updateDocumentNonBlocking(doc(firestore, 'users', user.uid, 'todos', editingTodo.id), {
-      title: editingTodo.title
+      title: editingTodo.title,
+      description: editingTodo.description
     });
     setEditingTodo(null);
   };
@@ -143,7 +146,7 @@ export default function Dashboard() {
       source: "to-do entry",
       createdAt: now,
       updatedAt: now,
-      description: "Assigned from personal to-do entry list.",
+      description: todo.description || "Assigned from personal to-do entry list.",
       confirmationStatus: "Pending",
       permitRequired: false,
       surveyRequired: false,
@@ -226,27 +229,37 @@ export default function Dashboard() {
                       <p className="text-[10px] font-bold text-slate-400 uppercase text-center py-4">No quick tasks</p>
                     ) : (
                       sortedTodos.map((todo) => (
-                        <div key={todo.id} className="group flex items-center justify-between p-2 bg-slate-50 border border-slate-100">
-                          <div className="flex items-center gap-3 min-w-0">
+                        <div key={todo.id} className="group flex items-center justify-between p-3 bg-slate-50 border border-slate-100">
+                          <div className="flex items-start gap-3 min-w-0">
                             <Checkbox 
                               checked={todo.completed} 
                               onCheckedChange={() => handleToggleTodo(todo)} 
-                              className="rounded-none border-slate-300 data-[state=checked]:bg-slate-950 data-[state=checked]:border-slate-950" 
+                              className="mt-0.5 rounded-none border-slate-300 data-[state=checked]:bg-slate-950 data-[state=checked]:border-slate-950" 
                             />
-                            <span className={cn(
-                              "text-[13px] font-bold uppercase tracking-tight truncate", 
-                              todo.completed ? "text-slate-300 line-through" : "text-slate-900"
-                            )}>
-                              {todo.title}
-                            </span>
+                            <div className="flex flex-col min-w-0">
+                              <span className={cn(
+                                "text-[13px] font-bold uppercase tracking-tight truncate", 
+                                todo.completed ? "text-slate-300 line-through" : "text-slate-900"
+                              )}>
+                                {todo.title}
+                              </span>
+                              {todo.description && (
+                                <span className={cn(
+                                  "text-[10px] font-medium text-slate-400 truncate mt-0.5",
+                                  todo.completed && "text-slate-200 line-through"
+                                )}>
+                                  {todo.description}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 shrink-0">
                             <Button 
                               variant="ghost" 
                               size="icon" 
                               className="h-7 w-7 text-slate-400 hover:text-primary" 
                               title="Edit"
-                              onClick={() => setEditingTodo({id: todo.id, title: todo.title})}
+                              onClick={() => setEditingTodo({id: todo.id, title: todo.title, description: todo.description || ''})}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -310,8 +323,8 @@ export default function Dashboard() {
                               {task.overallWorkStatus}
                             </Badge>
                             <div className="flex gap-1">
-                              <EditTaskDialog task={task} readOnly={true} trigger={<Button variant="ghost" size="icon" className="h-8 w-8"><Eye className="h-4 w-4" /></Button>} />
-                              <EditTaskDialog task={task} trigger={<Button variant="ghost" size="icon" className="h-8 w-8"><Pencil className="h-4 w-4" /></Button>} />
+                              <EditTaskDialog task={task} readOnly={true} trigger={<Button variant="ghost" size="icon" className="h-8 w-8 text-slate-950 hover:bg-slate-100"><Eye className="h-4 w-4" /></Button>} />
+                              <EditTaskDialog task={task} trigger={<Button variant="ghost" size="icon" className="h-8 w-8 text-slate-950 hover:bg-slate-100"><Pencil className="h-4 w-4" /></Button>} />
                             </div>
                           </div>
                         </div>
@@ -330,13 +343,24 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle className="text-[10px] font-bold uppercase tracking-widest text-slate-950">Update Quick Task</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <Input 
-              value={editingTodo?.title || ""} 
-              onChange={(e) => editingTodo && setEditingTodo({...editingTodo, title: e.target.value})}
-              className="rounded-none border-slate-200 font-bold uppercase text-[11px] h-11"
-              onKeyDown={(e) => e.key === 'Enter' && handleUpdateTodo()}
-            />
+          <div className="py-4 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Title</label>
+              <Input 
+                value={editingTodo?.title || ""} 
+                onChange={(e) => editingTodo && setEditingTodo({...editingTodo, title: e.target.value})}
+                className="rounded-none border-slate-200 font-bold uppercase text-[11px] h-11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Description</label>
+              <Textarea 
+                value={editingTodo?.description || ""} 
+                onChange={(e) => editingTodo && setEditingTodo({...editingTodo, description: e.target.value})}
+                className="rounded-none border-slate-200 font-medium text-[11px] min-h-[100px] resize-none"
+                placeholder="Additional details..."
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingTodo(null)} className="rounded-none font-bold uppercase text-[10px] h-10 tracking-widest">Cancel</Button>
