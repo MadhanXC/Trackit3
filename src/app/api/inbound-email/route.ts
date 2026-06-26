@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { initializeFirebase } from "@/firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  setDoc,
-} from "firebase/firestore";
+import { firestore } from "@/firebase-admin";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
-
 const webhookSecret = process.env.RESEND_WEBHOOK_SECRET!;
 
 export async function POST(req: NextRequest) {
   try {
+    // Read raw payload for signature verification
     const payload = await req.text();
 
     const id = req.headers.get("svix-id");
@@ -39,10 +31,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let event;
-
+    // Verify webhook signature
     try {
-      event = resend.webhooks.verify({
+      resend.webhooks.verify({
         payload,
         headers: {
           id,
@@ -51,8 +42,8 @@ export async function POST(req: NextRequest) {
         },
         webhookSecret,
       });
-    } catch (e: any) {
-      console.error("Verification failed:", e);
+    } catch (err) {
+      console.error("Webhook verification failed:", err);
 
       return NextResponse.json(
         {
@@ -64,34 +55,31 @@ export async function POST(req: NextRequest) {
     }
 
     const body = JSON.parse(payload);
-
-    console.log("Verified event:", body.type);
-
     const email = body.data;
 
-    const emailId = email.email_id;
     const fromRaw = email.from ?? "";
+    const subject = email.subject ?? "Inbound Task";
 
     const extractEmail = (value: string) => {
       const match =
         value.match(/<(.+?)>/) ??
         value.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
 
-      return match ? match[1] ?? match[0] : value;
+      return match ? (match[1] ?? match[0]) : value;
     };
 
     const fromEmail = extractEmail(fromRaw).toLowerCase().trim();
 
-    const { firestore } = initializeFirebase();
+    console.log("Sender:", fromEmail);
 
-    const q = query(
-      collection(firestore, "users"),
-      where("email", "==", fromEmail)
-    );
+    // Find the user by email
+    const usersSnapshot = await firestore
+      .collection("users")
+      .where("email", "==", fromEmail)
+      .limit(1)
+      .get();
 
-    const users = await getDocs(q);
-
-    if (users.empty) {
+    if (usersSnapshot.empty) {
       console.log("Unknown sender:", fromEmail);
 
       return NextResponse.json({
@@ -100,22 +88,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const userId = users.docs[0].id;
+    const userDoc = usersSnapshot.docs[0];
+    const userId = userDoc.id;
 
-    // NOTE:
-    // Replace this with the proper Received Email API once verification works.
-    // For now just use webhook metadata.
-
-    const subject = email.subject ?? "Inbound Task";
-
+    // OPTIONAL:
+    // Later you can fetch the full email body using email.email_id
+    // For now we'll use a placeholder.
     const description =
-      "Email received successfully. Fetch full body using the Received Email API.";
+      "Email received successfully. Fetch full body using Resend Received Email API.";
 
-    const workItemRef = doc(collection(firestore, "workItems"));
+    const workItemRef = firestore.collection("workItems").doc();
 
     const now = new Date().toISOString();
 
-    await setDoc(workItemRef, {
+    await workItemRef.set({
       id: workItemRef.id,
       userId,
       title: subject,
@@ -134,12 +120,14 @@ export async function POST(req: NextRequest) {
       shipmentRequired: false,
     });
 
+    console.log("Created work item:", workItemRef.id);
+
     return NextResponse.json({
       success: true,
       id: workItemRef.id,
     });
   } catch (err: any) {
-    console.error(err);
+    console.error("Inbound Email Error:", err);
 
     return NextResponse.json(
       {
