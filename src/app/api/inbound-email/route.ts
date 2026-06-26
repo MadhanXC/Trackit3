@@ -90,30 +90,28 @@ export async function POST(req: NextRequest) {
     //
     // Fetch full email
     //
-    let subject = emailMetadata.subject || "New Email";
-    let emailBody = "No content provided.";
+   let subject = emailMetadata.subject || "New Email";
+let emailBody = "No content provided.";
 
-    try {
-      const fullEmailResponse = await resend.emails.get(emailId);
-      console.log("========== FULL EMAIL RESPONSE ==========");
-console.log(JSON.stringify(fullEmailResponse, null, 2));
-console.log("=========================================");
+try {
+  const { data: emailContent, error } =
+    await resend.emails.receiving.get(emailId);
 
-      if (!fullEmailResponse.error && fullEmailResponse.data) {
-        const emailContent = fullEmailResponse.data;
+  if (error) {
+    console.error("Failed to retrieve received email:", error);
+  } else if (emailContent) {
+    console.log("Received email:", emailContent);
 
-        subject = emailContent.subject || subject;
+    subject = emailContent.subject || subject;
 
-        emailBody =
-          emailContent.text ||
-          emailContent.html ||
-          emailBody;
-      } else {
-        console.warn("Unable to fetch email body.");
-      }
-    } catch (err) {
-      console.warn("Failed to fetch full email:", err);
-    }
+    emailBody =
+      emailContent.text ??
+      emailContent.html ??
+      emailBody;
+  }
+} catch (err) {
+  console.error("Failed to fetch received email:", err);
+}
 
     //
     // Create Todo
