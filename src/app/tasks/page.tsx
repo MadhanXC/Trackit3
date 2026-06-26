@@ -1,0 +1,434 @@
+
+'use client';
+
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
+import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase"
+import { collection, query, doc, where } from "firebase/firestore"
+import { Badge } from "@/components/ui/badge"
+import { 
+  Search, 
+  Loader2, 
+  Eye, 
+  Pencil, 
+  Trash2,
+  List as ListIcon,
+  LayoutGrid,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  Truck,
+  ClipboardCheck,
+  FileText,
+  RotateCcw
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { NewTaskDialog } from "@/components/dashboard/new-task-dialog"
+import { EditTaskDialog } from "@/components/dashboard/edit-task-dialog"
+import { ReportDialog } from "@/components/dashboard/report-dialog"
+import { cn } from "@/lib/utils"
+import { deleteDocumentNonBlocking } from "@/firebase"
+import { useToast } from "@/hooks/use-toast"
+import { format } from "date-fns"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import * as React from "react"
+
+const ITEMS_PER_PAGE = 15;
+
+const PRIORITY_RANK: Record<string, number> = {
+  'Urgent': 3,
+  'High': 2,
+  'Medium': 1,
+  'Low': 0,
+};
+
+export default function TasksPage() {
+  const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
+  
+  const [viewMode, setViewMode] = React.useState<'card' | 'list'>('list');
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState('all');
+  const [typeFilter, setTypeFilter] = React.useState('all');
+  const [priorityFilter, setPriorityFilter] = React.useState('all');
+  const [sourceFilter, setSourceFilter] = React.useState('all');
+  const [sortBy, setSortBy] = React.useState('newest');
+  const [currentPage, setCurrentPage] = React.useState(1);
+
+  const tasksQuery = useMemoFirebase(() => {
+    if (!firestore || isUserLoading || !user) return null;
+    return query(
+      collection(firestore, 'workItems'), 
+      where('userId', '==', user.uid)
+    );
+  }, [firestore, isUserLoading, user]);
+
+  const { data: rawTasks, isLoading } = useCollection(tasksQuery);
+
+  const filteredTasks = React.useMemo(() => {
+    if (!rawTasks) return [];
+    let filtered = [...rawTasks];
+    
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(t => 
+        (t.title && t.title.toLowerCase().includes(lowerSearch)) || 
+        (t.siteAddressStreet && t.siteAddressStreet.toLowerCase().includes(lowerSearch))
+      );
+    }
+    
+    if (statusFilter !== 'all') filtered = filtered.filter(t => t.overallWorkStatus === statusFilter);
+    if (typeFilter !== 'all') filtered = filtered.filter(t => t.workItemType === typeFilter);
+    if (priorityFilter !== 'all') filtered = filtered.filter(t => t.priority === priorityFilter);
+    if (sourceFilter !== 'all') filtered = filtered.filter(t => t.source === sourceFilter);
+
+    return filtered.sort((a, b) => {
+      const isACompleted = a.overallWorkStatus === 'Completed';
+      const isBCompleted = b.overallWorkStatus === 'Completed';
+      
+      if (isACompleted && !isBCompleted) return 1;
+      if (!isACompleted && isBCompleted) return -1;
+      
+      switch (sortBy) {
+        case 'address-asc':
+          return (a.siteAddressStreet || '').localeCompare(b.siteAddressStreet || '');
+        case 'title-asc':
+          return (a.title || '').localeCompare(b.title || '');
+        case 'priority-desc':
+          return (PRIORITY_RANK[b.priority] || 0) - (PRIORITY_RANK[a.priority] || 0);
+        case 'oldest':
+          return new Date(a.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        case 'newest':
+        default:
+          return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime();
+      }
+    });
+  }, [rawTasks, searchTerm, statusFilter, typeFilter, priorityFilter, sourceFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / ITEMS_PER_PAGE));
+  const paginatedTasks = filteredTasks.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setTypeFilter('all');
+    setPriorityFilter('all');
+    setSourceFilter('all');
+    setSortBy('newest');
+    setCurrentPage(1);
+  };
+
+  const handleDelete = (taskId: string) => {
+    if (!firestore) return;
+    deleteDocumentNonBlocking(doc(firestore, 'workItems', taskId));
+    toast({ title: "Removed", description: `Item removed from workspace.` });
+  };
+
+  return (
+    <div className="flex min-h-screen bg-slate-50/30 w-full">
+      <AppSidebar />
+      <SidebarInset className="flex flex-col flex-1">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 px-4 md:px-6 border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <SidebarTrigger />
+            <div className="flex flex-col">
+              <h1 className="text-[15px] md:text-[18px] font-bold text-slate-950 font-headline uppercase tracking-tight leading-none">Workspace</h1>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block mt-1">Active Pipeline Management</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3">
+            <ReportDialog />
+            <NewTaskDialog />
+          </div>
+        </header>
+
+        <main className="flex-1 p-4 md:p-8 max-w-[1600px] mx-auto w-full">
+          <div className="mb-6 space-y-4 bg-white border border-slate-200 p-4 md:p-6 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="relative flex-1 max-w-2xl w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input 
+                  placeholder="Search location or reference..." 
+                  className="pl-11 h-12 border-slate-200 shadow-none rounded-none text-slate-950 font-bold focus:border-slate-950 transition-all w-full text-[13px] bg-slate-50/50" 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={handleResetFilters} 
+                  className="h-12 rounded-none border-slate-200 text-[10px] font-bold uppercase tracking-widest px-4 hover:bg-slate-50"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" /> Reset
+                </Button>
+                <div className="flex items-center gap-1 border border-slate-200 rounded-none p-1 h-12 bg-white">
+                  <Button variant={viewMode === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('list')} className="h-10 w-10 rounded-none"><ListIcon className="h-5 w-5" /></Button>
+                  <Button variant={viewMode === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('card')} className="h-10 w-10 rounded-none"><LayoutGrid className="h-5 w-5" /></Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-10 border-slate-200 font-bold text-slate-950 rounded-none uppercase text-[10px] tracking-widest bg-white">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="rounded-none">
+                  <SelectItem value="all">All Status</SelectItem>
+                  {['Pending', 'In Progress', 'On Hold', 'Completed'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-10 border-slate-200 font-bold text-slate-950 rounded-none uppercase text-[10px] tracking-widest bg-white">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent className="rounded-none">
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Job">Jobs Only</SelectItem>
+                  <SelectItem value="Project">Projects Only</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="h-10 border-slate-200 font-bold text-slate-950 rounded-none uppercase text-[10px] tracking-widest bg-white">
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent className="rounded-none">
+                  <SelectItem value="all">All Priority</SelectItem>
+                  {['Low', 'Medium', 'High', 'Urgent'].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="h-10 border-slate-200 font-bold text-slate-950 rounded-none uppercase text-[10px] tracking-widest bg-white">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent className="rounded-none">
+                  <SelectItem value="all">All Sources</SelectItem>
+                  {['Call', 'Email', 'Text', 'In-person', 'to-do entry'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="h-10 border-slate-200 bg-slate-100 font-bold text-slate-950 rounded-none uppercase text-[10px] tracking-widest">
+                  <SelectValue placeholder="Sort By" />
+                </SelectTrigger>
+                <SelectContent className="rounded-none">
+                  <SelectItem value="newest">Newest First</SelectItem>
+                  <SelectItem value="oldest">Oldest First</SelectItem>
+                  <SelectItem value="address-asc">Address (A-Z)</SelectItem>
+                  <SelectItem value="title-asc">Title (A-Z)</SelectItem>
+                  <SelectItem value="priority-desc">Priority (High-Low)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="mb-12">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-32 gap-4">
+                <Loader2 className="h-10 w-10 animate-spin text-slate-900" />
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Syncing Workspace...</p>
+              </div>
+            ) : !paginatedTasks.length ? (
+              <div className="rounded-none border border-dashed border-slate-200 py-16 md:py-32 px-4 text-center bg-white shadow-sm">
+                <h3 className="text-slate-950 font-bold mb-2 text-[14px]">No items in scoped view</h3>
+                <p className="text-[10px] text-slate-500 mb-6 uppercase tracking-widest">Adjust filters or search parameters to expand result set.</p>
+                <Button variant="outline" size="sm" onClick={handleResetFilters} className="font-bold border-slate-950 rounded-none uppercase text-[10px] tracking-widest px-6 h-11">Clear All Filters</Button>
+              </div>
+            ) : viewMode === 'list' ? (
+              <div className="rounded-none border border-slate-200 overflow-x-auto bg-white shadow-sm scrollbar-hide">
+                <Table className="min-w-full md:min-w-[1400px]">
+                  <TableHeader className="bg-slate-950 border-b-0 hidden md:table-header-group">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="font-bold text-white py-5 pl-8 w-12 text-center text-[10px] tracking-widest uppercase">#</TableHead>
+                      <TableHead className="font-bold text-white py-5 w-1/4 text-[10px] tracking-widest uppercase text-left">ADDRESS - TITLE</TableHead>
+                      <TableHead className="font-bold text-white py-5 uppercase text-[10px] tracking-widest text-left">AUDIT DETAILS</TableHead>
+                      <TableHead className="font-bold text-white py-5 uppercase text-[10px] tracking-widest text-center">STATUS</TableHead>
+                      <TableHead className="font-bold text-white py-5 text-right pr-8 uppercase text-[10px] tracking-widest">MANAGE</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedTasks.map((task, index) => {
+                      const sequentialNumber = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                      return (
+                        <TableRow key={task.id} className="hover:bg-slate-50/80 border-slate-100 group transition-all flex flex-col md:table-row p-4 md:p-0">
+                          <TableCell className="py-6 pl-8 font-bold text-slate-400 text-[10px] text-center hidden md:table-cell">{sequentialNumber}</TableCell>
+                          <TableCell className="py-2 md:py-6 align-top">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="font-bold text-slate-950 text-[13px] leading-tight tracking-tight uppercase">
+                                {task.siteAddressStreet}
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-400 uppercase leading-none">{task.title}</span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-[9px] font-bold text-slate-500 border-slate-200 rounded-none uppercase px-1.5 h-5 bg-white">TYPE: {task.workItemType}</Badge>
+                                <Badge variant="outline" className={cn(
+                                  "text-[9px] font-bold border-none rounded-none uppercase px-1.5 h-5",
+                                  task.priority === 'Urgent' ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"
+                                )}>
+                                  {task.priority}
+                                </Badge>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 md:py-6 align-top">
+                            <div className="flex flex-wrap gap-2 max-w-md">
+                              {task.permitRequired && (
+                                <Badge variant="outline" className="text-[9px] font-bold bg-white text-slate-950 border-slate-200 rounded-none h-6 uppercase px-2 flex items-center gap-1">
+                                  <FileText className="h-2.5 w-2.5" /> PERMIT: {task.permitStatus}
+                                </Badge>
+                              )}
+                              {task.surveyRequired && (
+                                <Badge variant="outline" className="text-[9px] font-bold bg-white text-slate-950 border-slate-200 rounded-none h-6 uppercase px-2 flex items-center gap-1">
+                                  <ClipboardCheck className="h-2.5 w-2.5" /> SURVEY: {task.surveyStatus}
+                                </Badge>
+                              )}
+                              {task.materialsRequired && (
+                                <Badge variant="outline" className="text-[9px] font-bold bg-white text-slate-950 border-slate-200 rounded-none h-6 uppercase px-2">INV: {task.materialsList?.length || 0}</Badge>
+                              )}
+                              {task.shipmentRequired && (
+                                <Badge variant="outline" className="text-[9px] font-bold bg-slate-900 text-white border-none rounded-none h-6 uppercase px-2 flex items-center gap-1.5">
+                                  <Truck className="h-3 w-3" /> {task.shipmentStatus}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 md:py-6 align-top">
+                            <div className="flex flex-row md:flex-col gap-1 items-center justify-between md:justify-center">
+                              <Badge className={cn("text-[9px] font-bold rounded-none h-6 uppercase px-3 tracking-widest", task.overallWorkStatus === 'Completed' ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-900 border-none")}>
+                                {task.overallWorkStatus}
+                              </Badge>
+                              <div className="flex flex-col gap-0.5 mt-1 text-right md:text-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">CREATED: {task.createdAt ? format(new Date(task.createdAt), "MM/dd/yy") : '—'}</span>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4 md:py-6 text-right pr-0 md:pr-8 align-top">
+                            <div className="flex justify-end gap-1 transition-opacity">
+                              <EditTaskDialog task={task} readOnly={true} trigger={<Button variant="ghost" size="icon" className="h-10 w-10 text-slate-950 hover:bg-slate-100 rounded-none"><Eye className="h-5 w-5" /></Button>} />
+                              <EditTaskDialog task={task} trigger={<Button variant="ghost" size="icon" className="h-10 w-10 text-slate-950 hover:bg-slate-100 rounded-none"><Pencil className="h-5 w-5" /></Button>} />
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-10 w-10 text-destructive hover:bg-destructive/5 rounded-none"><Trash2 className="h-5 w-5" /></Button></AlertDialogTrigger>
+                                <AlertDialogContent className="rounded-none border-slate-200 shadow-xl">
+                                  <AlertDialogHeader><AlertDialogTitle className="font-bold text-slate-950 text-[15px] uppercase">Remove Item Record?</AlertDialogTitle></AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel className="font-bold rounded-none border-slate-200 text-[10px] uppercase tracking-widest">Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(task.id)} className="bg-destructive text-white font-bold rounded-none text-[10px] uppercase tracking-widest">Confirm Deletion</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                {paginatedTasks.map((task, index) => {
+                  const sequentialNumber = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                  return (
+                    <div key={task.id} className="border border-slate-200 rounded-none p-6 bg-white hover:border-slate-950 transition-all group flex flex-col h-full relative shadow-sm">
+                      <div className="absolute top-4 right-4 text-[9px] font-bold text-slate-200">{sequentialNumber}</div>
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[9px] font-bold text-slate-400 border-slate-100 rounded-none uppercase tracking-widest">{task.workItemType}</Badge>
+                          <Badge className={cn(
+                            "text-[9px] font-bold border-none rounded-none uppercase",
+                            task.priority === 'Urgent' ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-500"
+                          )}>
+                            {task.priority}
+                          </Badge>
+                        </div>
+                        <div className="flex gap-1 transition-opacity">
+                          <EditTaskDialog task={task} readOnly={true} trigger={<Button variant="ghost" size="icon" className="h-8 w-8 text-slate-950"><Eye className="h-4 w-4" /></Button>} />
+                          <EditTaskDialog task={task} trigger={<Button variant="ghost" size="icon" className="h-8 w-8 text-slate-950"><Pencil className="h-4 w-4" /></Button>} />
+                        </div>
+                      </div>
+                      <div className="flex-1 space-y-3 mb-8">
+                        <h3 className="text-[13px] font-bold text-slate-950 leading-tight group-hover:text-slate-950 transition-colors tracking-tight uppercase">
+                          {task.siteAddressStreet}
+                        </h3>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase leading-none">{task.title}</p>
+                        <p className="text-[12px] font-medium text-slate-500 line-clamp-3 leading-relaxed mt-2">{task.description}</p>
+                      </div>
+                      
+                      <div className="space-y-4 pt-6 border-t border-slate-50">
+                        <div className="grid grid-cols-2 gap-2">
+                          {task.permitRequired && <div className="flex items-center gap-1.5"><FileText className="h-3 w-3 text-slate-300" /><span className="text-[9px] font-bold text-slate-950 uppercase">PERMIT: {task.permitStatus}</span></div>}
+                          {task.surveyRequired && <div className="flex items-center gap-1.5"><ClipboardCheck className="h-3 w-3 text-slate-300" /><span className="text-[9px] font-bold text-slate-950 uppercase">SURVEY: {task.surveyStatus}</span></div>}
+                        </div>
+                        <div className="flex items-center justify-between mt-4">
+                          <Badge className={cn("text-[9px] font-bold rounded-none border-none px-3 h-6 uppercase tracking-widest", task.overallWorkStatus === 'Completed' ? "bg-slate-950 text-white" : "bg-slate-200 text-slate-950")}>
+                            {task.overallWorkStatus}
+                          </Badge>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">CREATED: {task.createdAt ? format(new Date(task.createdAt), "MM/dd/yy") : '—'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {filteredTasks.length > 0 && (
+            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 py-12 border-t border-slate-200 mt-8">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={currentPage === 1} 
+                onClick={() => { setCurrentPage(prev => Math.max(1, prev - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
+                className="w-full md:w-auto font-bold rounded-none border-slate-200 h-11 px-6 uppercase text-[10px] tracking-widest bg-white shadow-sm"
+              >
+                <ChevronLeft className="h-5 w-5 mr-2" /> Previous
+              </Button>
+              <span className="text-[10px] font-bold text-slate-950 uppercase tracking-widest min-w-[120px] text-center">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={currentPage === totalPages} 
+                onClick={() => { setCurrentPage(prev => Math.min(totalPages, prev + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
+                className="w-full md:w-auto font-bold rounded-none border-slate-200 h-11 px-6 uppercase text-[10px] tracking-widest bg-white shadow-sm"
+              >
+                Next <ChevronRight className="h-5 w-5 ml-2" />
+              </Button>
+            </div>
+          )}
+        </main>
+      </SidebarInset>
+    </div>
+  )
+}

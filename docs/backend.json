@@ -1,0 +1,81 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Represents a user's profile within the TrackIt application.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "TodoItem": {
+      "title": "TodoItem",
+      "description": "A simple task for the dashboard todo list.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "completed", "createdAt"]
+    },
+    "WorkItem": {
+      "title": "WorkItem",
+      "description": "A collaborative job or project entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string", "description": "The owner of the work item." },
+        "title": { "type": "string" },
+        "siteAddressStreet": { "type": "string" },
+        "pocName": { "type": "string" },
+        "pocPhone": { "type": "string" },
+        "workItemType": { "type": "string", "enum": ["Job", "Project"] },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High", "Urgent"] },
+        "overallWorkStatus": { "type": "string", "enum": ["Pending", "In Progress", "On Hold", "Completed"] },
+        "confirmationStatus": { "type": "string", "enum": ["Pending", "Confirmed"] },
+        "source": { "type": "string", "enum": ["Call", "Email", "Text", "In-person", "to-do entry"] },
+        "description": { "type": "string" },
+        "permitRequired": { "type": "boolean" },
+        "permitStatus": { "type": "string" },
+        "permitHandler": { "type": "string" },
+        "surveyRequired": { "type": "boolean" },
+        "surveyStatus": { "type": "string" },
+        "surveyHandler": { "type": "string" },
+        "materialsRequired": { "type": "boolean" },
+        "materialsList": { "type": "array", "items": { "type": "object" } },
+        "shipmentRequired": { "type": "boolean" },
+        "shipmentStatus": { "type": "string" },
+        "dateInitiated": { "type": "string", "format": "date" },
+        "dateCompleted": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "siteAddressStreet", "workItemType", "overallWorkStatus", "createdAt"]
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/backend/entities/UserProfile" },
+      "description": "User profile data."
+    },
+    "/users/{userId}/todos/{todoId}": {
+      "schema": { "$ref": "#/backend/entities/TodoItem" },
+      "description": "User-specific quick tasks."
+    },
+    "/workItems/{itemId}": {
+      "schema": { "$ref": "#/backend/entities/WorkItem" },
+      "description": "Collaborative work items and field tasks including those ingested via inbound email."
+    }
+  }
+}
