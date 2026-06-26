@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -8,7 +7,8 @@ import {
   CheckSquare,
   LogOut,
   Mail,
-  AlertCircle
+  Settings,
+  ShieldCheck,
 } from "lucide-react"
 
 import {
@@ -27,6 +27,7 @@ import { usePathname } from "next/navigation"
 import { useAuth, useUser } from "@/firebase"
 import { signOut } from "firebase/auth"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
@@ -80,20 +81,48 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Integrations</SidebarGroupLabel>
-          <div className="px-2 py-3 bg-slate-50 border border-slate-100 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="h-5 w-5 bg-white border border-slate-200 flex items-center justify-center rounded-none shadow-sm">
-                <Mail className="h-3 w-3 text-slate-400" />
+          <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Sync Configuration</SidebarGroupLabel>
+          <div className="px-2 py-3 bg-slate-50 border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-5 bg-white border border-slate-200 flex items-center justify-center rounded-none shadow-sm">
+                  <Mail className="h-3 w-3 text-slate-400" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-950 uppercase tracking-widest">Inbound Email</span>
               </div>
-              <span className="text-[10px] font-bold text-slate-950 uppercase tracking-widest">Email Sync</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Settings className="h-3 w-3 text-slate-300 cursor-help hover:text-primary transition-colors" />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-slate-950 text-white rounded-none border-none p-4 max-w-[320px] shadow-2xl">
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-400 border-b border-white/10 pb-2">Official Resend Verification</p>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-500 uppercase">Verification Type:</p>
+                        <p className="text-[10px] text-white">Svix / Standard Webhook Signature</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-500 uppercase">Endpoint URL:</p>
+                        <p className="text-[10px] font-mono bg-white/5 p-2 break-all text-slate-200">https://trackit3-virid.vercel.app/api/inbound-email</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-500 uppercase">Signing Secret:</p>
+                        <p className="text-[10px] font-mono text-emerald-400 break-all">whsec_YuWNpFjh0fSYOIHTLzmus65vp7YiZmb6</p>
+                      </div>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
             </div>
-            <div className="space-y-1">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mb-1">Inbound destination:</p>
-              <p className="text-[10px] font-bold text-slate-950 uppercase tracking-widest truncate">app@intaaoldei.resend.app</p>
-              <div className="flex items-center gap-1.5 pt-1">
-                <AlertCircle className="h-2 w-2 text-emerald-500" />
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Active Configuration</span>
+            <div className="space-y-2">
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mb-1">Target Recipient:</p>
+                <p className="text-[10px] font-bold text-slate-950 uppercase tracking-widest truncate">app@intaaoldei.resend.app</p>
+              </div>
+              <div className="flex items-center gap-1.5 border-t border-slate-200/50 pt-2">
+                <ShieldCheck className="h-2.5 w-2.5 text-emerald-500" />
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Official Sync Active</span>
               </div>
             </div>
           </div>
@@ -103,9 +132,9 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 border-t border-slate-50">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">Session</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">Authorized Profile</span>
             <div className="flex items-center gap-3 px-2 py-2">
-              <div className="h-8 w-8 rounded-none bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">
+              <div className="h-8 w-8 rounded-none bg-slate-950 flex items-center justify-center text-[10px] font-bold text-white uppercase">
                 {user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U'}
               </div>
               <div className="flex flex-col min-w-0">
@@ -128,7 +157,7 @@ export function AppSidebar() {
             Sign Out
           </Button>
           <div className="px-2 pt-2 border-t border-slate-50">
-            <span className="text-[10px] font-bold text-slate-200 uppercase tracking-widest">Workspace v1.0</span>
+            <span className="text-[10px] font-bold text-slate-200 uppercase tracking-widest">Workspace v1.2.0</span>
           </div>
         </div>
       </SidebarFooter>
