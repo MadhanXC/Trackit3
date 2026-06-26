@@ -7,19 +7,12 @@ const webhookSecret = process.env.RESEND_WEBHOOK_SECRET!;
 
 export async function POST(req: NextRequest) {
   try {
-    // Read raw payload for signature verification
+    // Read raw body for signature verification
     const payload = await req.text();
 
     const id = req.headers.get("svix-id");
     const timestamp = req.headers.get("svix-timestamp");
     const signature = req.headers.get("svix-signature");
-
-    console.log("Webhook headers:", {
-      id,
-      timestamp,
-      signature,
-      webhookSecretPrefix: webhookSecret?.slice(0, 10),
-    });
 
     if (!id || !timestamp || !signature) {
       return NextResponse.json(
@@ -31,7 +24,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify webhook signature
+    // Verify webhook
     try {
       resend.webhooks.verify({
         payload,
@@ -54,11 +47,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = JSON.parse(payload);
-    const email = body.data;
-
-    const fromRaw = email.from ?? "";
-    const subject = email.subject ?? "Inbound Task";
+    // Parse verified payload
+    const event = JSON.parse(payload);
+    const email = event.data;
 
     const extractEmail = (value: string) => {
       const match =
@@ -68,11 +59,15 @@ export async function POST(req: NextRequest) {
       return match ? (match[1] ?? match[0]) : value;
     };
 
-    const fromEmail = extractEmail(fromRaw).toLowerCase().trim();
+    const fromEmail = extractEmail(email.from ?? "")
+      .toLowerCase()
+      .trim();
 
-    console.log("Sender:", fromEmail);
+    const subject = email.subject || "New Email";
 
-    // Find the user by email
+    console.log("Looking up user:", fromEmail);
+
+    // Find the user document
     const usersSnapshot = await firestore
       .collection("users")
       .where("email", "==", fromEmail)
@@ -80,7 +75,7 @@ export async function POST(req: NextRequest) {
       .get();
 
     if (usersSnapshot.empty) {
-      console.log("Unknown sender:", fromEmail);
+      console.log("No user found for:", fromEmail);
 
       return NextResponse.json({
         success: true,
@@ -88,46 +83,33 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const userDoc = usersSnapshot.docs[0];
-    const userId = userDoc.id;
+    const userId = usersSnapshot.docs[0].id;
 
-    // OPTIONAL:
-    // Later you can fetch the full email body using email.email_id
-    // For now we'll use a placeholder.
-    const description =
-      "Email received successfully. Fetch full body using Resend Received Email API.";
+    console.log("Matched user:", userId);
 
-    const workItemRef = firestore.collection("workItems").doc();
+    // Create todo
+    const todoRef = firestore
+      .collection("users")
+      .doc(userId)
+      .collection("todos")
+      .doc();
 
-    const now = new Date().toISOString();
-
-    await workItemRef.set({
-      id: workItemRef.id,
-      userId,
+    await todoRef.set({
+      id: todoRef.id,
       title: subject,
-      description,
+      completed: false,
+      createdAt: new Date().toISOString(),
       source: "to-do entry",
-      workItemType: "Job",
-      priority: "Medium",
-      overallWorkStatus: "Pending",
-      confirmationStatus: "Pending",
-      siteAddressStreet: "Email",
-      createdAt: now,
-      updatedAt: now,
-      permitRequired: false,
-      surveyRequired: false,
-      materialsRequired: false,
-      shipmentRequired: false,
     });
 
-    console.log("Created work item:", workItemRef.id);
+    console.log("Todo created:", todoRef.id);
 
     return NextResponse.json({
       success: true,
-      id: workItemRef.id,
+      todoId: todoRef.id,
     });
   } catch (err: any) {
-    console.error("Inbound Email Error:", err);
+    console.error("Inbound email error:", err);
 
     return NextResponse.json(
       {
