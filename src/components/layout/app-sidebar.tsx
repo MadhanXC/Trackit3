@@ -108,7 +108,7 @@ export function AppSidebar() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Signing Secret:</p>
-                        <p className="text-[10px] font-mono text-emerald-400 break-all">whsec_YuWNpFjh0fSYOIHTLzmus65vp7YiZmb6</p>
+                        <p className="text-[10px] font-mono text-emerald-400 break-all">Secret key</p>
                       </div>
                     </div>
                   </div>
